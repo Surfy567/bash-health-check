@@ -36,16 +36,19 @@ jobs:
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
 
+    - name: Ensure remote deploy directory exists
+      run: |
+        ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} "mkdir -p /home/${{ secrets.VM_USER }}/healthcheck-deploy"
+
     - name: Copy script to remote VM
-      run: scp healthcheck.tar.gz ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/healthcheck-deploy/
+      run: |
+        scp healthcheck.tar.gz ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/home/${{ secrets.VM_USER }}/healthcheck-deploy/
 
     - name: Run script on remote VM
       run: |
-        ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
-          mkdir -p ~/healthcheck-deploy
-          cd ~/healthcheck-deploy
+        ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << EOF
+          cd /home/${{ secrets.VM_USER }}/healthcheck-deploy
           tar -xzf healthcheck.tar.gz
           chmod +x setup-ssh-deployment.sh
           ./setup-ssh-deployment.sh
         EOF
-
