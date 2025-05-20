@@ -6,54 +6,47 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Lint script (ShellCheck)
-        uses: ludeeus/action-shellcheck@master
-        with:
-          check_together: 'true'
-          severity: 'warning'
+    - name: Ensure Dependencies (ShellCheck and SSH tools)
+      run: |
+         sudo apt-get update
+         sudo apt-get install -y shellcheck openssh-client
 
-      - name: Test script syntax
-        run: bash -n setup-ssh-deployment.sh
+    - name: Lint script
+      run: shellcheck setup-ssh-deployment.sh
 
-      - name: Make script executable
-        run: chmod +x setup-ssh-deployment.sh
+    - name: Test script syntax
+      run: bash -n setup-ssh-deployment.sh
 
-      - name: Package script
-        run: tar -czf healthcheck.tar.gz setup-ssh-deployment.sh
+    - name: Make script executable
+      run: chmod +x setup-ssh-deployment.sh
 
-      - name: Copy script to remote VM and run it
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          script: |
-            mkdir -p ~/healthcheck-deploy
-            exit 0
+    - name: Package script
+      run: tar -czf healthcheck.tar.gz setup-ssh-deployment.sh
 
-      - name: Upload script to VM
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          source: healthcheck.tar.gz
-          target: ~/healthcheck-deploy/
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Run script on VM
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          script: |
-            cd ~/healthcheck-deploy
-            tar -xzf healthcheck.tar.gz
-            chmod +x setup-ssh-deployment.sh
-            ./setup-ssh-deployment.sh
+    - name: Copy script to remote VM
+      run: scp healthcheck.tar.gz ${{ secrets.VM_USER }}@${{ secrets.VM_HOST 
+}}:~/healthcheck-deploy/
+
+    - name: Run script on remote VM
+      run: |
+        ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
+          mkdir -p ~/healthcheck-deploy
+          cd ~/healthcheck-deploy
+          tar -xzf healthcheck.tar.gz
+          chmod +x setup-ssh-deployment.sh
+          ./setup-ssh-deployment.sh
+        EOF
+
