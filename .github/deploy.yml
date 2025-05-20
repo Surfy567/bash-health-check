@@ -1,0 +1,59 @@
+name: Lint, Package & Deploy Script
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Lint script (ShellCheck)
+      uses: ludeeus/action-shellcheck@v2
+      with:
+        check_together: 'true'
+        severity: 'warning'
+
+    - name: Test script syntax
+      run: bash -n setup-ssh-deployment.sh
+
+    - name: Make script executable
+      run: chmod +x setup-ssh-deployment.sh
+
+    - name: Package script
+      run: tar -czf healthcheck.tar.gz setup-ssh-deployment.sh
+
+    - name: Copy script to remote VM and run it
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VM_HOST }}
+        username: ${{ secrets.VM_USER }}
+        key: ${{ secrets.VM_SSH_KEY }}
+        script: |
+          mkdir -p ~/healthcheck-deploy
+          exit 0  # Ensure dir exists first, avoid SSH failure
+
+    - name: Upload script to VM
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.VM_HOST }}
+        username: ${{ secrets.VM_USER }}
+        key: ${{ secrets.VM_SSH_KEY }}
+        source: healthcheck.tar.gz
+        target: ~/healthcheck-deploy/
+
+    - name: Run script on VM
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VM_HOST }}
+        username: ${{ secrets.VM_USER }}
+        key: ${{ secrets.VM_SSH_KEY }}
+        script: |
+          cd ~/healthcheck-deploy
+          tar -xzf healthcheck.tar.gz
+          chmod +x setup-ssh-deployment.sh
+          ./setup-ssh-deployment.sh
